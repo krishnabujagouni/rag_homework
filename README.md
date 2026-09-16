@@ -7,50 +7,34 @@ ingests documents into Pinecone, the other answers questions from them.
 
 ```mermaid
 flowchart TD
-    subgraph ING["Ingestion - python ingestion.py"]
-        A["data/*.pdf"] --> B["PyPDFLoader<br/>one page = one chunk"]
-        B --> C{"page has<br/>extractable text?"}
-        C -->|no| D["skipped"]
-        C -->|yes| E["page chunks"]
-        E --> F["BM25Encoder.fit<br/>corpus IDF + avg doc length"]
-        E --> G["OpenAI embeddings<br/>1536-d dense vector"]
-        F --> H[("bm25_params.json")]
-        F --> I["BM25 sparse vector"]
-        G --> J["upsert dense + sparse<br/>on one record"]
-        I --> J
+    subgraph ING["ingestion.py"]
+        A["PDF pages<br/>1 page = 1 chunk"] --> B["dense vector<br/>OpenAI"]
+        A --> C["sparse vector<br/>BM25"]
     end
 
-    J --> K[("Pinecone index<br/>metric=dotproduct, dim=1536")]
+    B --> D[("Pinecone<br/>dotproduct index")]
+    C --> D
+    C --> E[("bm25_params.json")]
 
-    subgraph QRY["Query - python main.py"]
-        L["user question"] --> M["OpenAI embed<br/>dense vector"]
-        L --> N["BM25 encode_queries<br/>sparse vector"]
-        M --> O["alpha blend 0.5<br/>scale dense and sparse"]
-        N --> O
-        O --> P["one hybrid query"]
-        P --> Q["top 4 pages"]
-        Q --> R["prompt + retrieved context"]
-        R --> S["gpt-4o, temperature 0"]
-        S --> T["answer + page citations"]
+    subgraph QRY["main.py"]
+        F["question"] --> G["dense vector"]
+        F --> H["sparse vector"]
+        G --> I["hybrid search<br/>alpha 0.5"]
+        H --> I
+        I --> J["top 4 pages"]
+        J --> K["gpt-4o"]
+        K --> L["answer + citations"]
     end
 
-    H -.->|"same fitted encoder"| N
-    K --> P
-    U["config.py reads .env<br/>models, dimension, index name"] -.-> ING
-    U -.-> QRY
+    E -.->|same fitted encoder| H
+    D --> I
 ```
 
-Three edges in that diagram carry most of the design:
-
-- **`E` splits into `F` and `G`** — every chunk is encoded twice, sparse and
-  dense, and both land on the *same* Pinecone record.
-- **`H` feeds back into `N`** — the query must be encoded by the same fitted
-  BM25 encoder used at ingest, or the two sparse vectors describe different
-  vocabularies and keyword matching silently degrades.
-- **`M` and `N` merge at `O`, not after `P`** — the blend happens before the
-  search, so Pinecone returns one ranked list scored as
-  `dot(dense) + dot(sparse)`. There is no second result set to fuse.
-
+Each page is encoded twice — dense for meaning, sparse for keywords — and both
+vectors live on one Pinecone record. The question is encoded the same two ways,
+so a single query scores both at once. The dotted line matters: the query's BM25
+encoder must be the one fit during ingestion, or keyword matching silently
+degrades.
 
 ## How it works
 

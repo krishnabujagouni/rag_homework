@@ -3,6 +3,55 @@
 Ask questions about your own PDFs. Two scripts and a config module: one
 ingests documents into Pinecone, the other answers questions from them.
 
+## Architecture
+
+```mermaid
+flowchart TD
+    subgraph ING["Ingestion - python ingestion.py"]
+        A["data/*.pdf"] --> B["PyPDFLoader<br/>one page = one chunk"]
+        B --> C{"page has<br/>extractable text?"}
+        C -->|no| D["skipped"]
+        C -->|yes| E["page chunks"]
+        E --> F["BM25Encoder.fit<br/>corpus IDF + avg doc length"]
+        E --> G["OpenAI embeddings<br/>1536-d dense vector"]
+        F --> H[("bm25_params.json")]
+        F --> I["BM25 sparse vector"]
+        G --> J["upsert dense + sparse<br/>on one record"]
+        I --> J
+    end
+
+    J --> K[("Pinecone index<br/>metric=dotproduct, dim=1536")]
+
+    subgraph QRY["Query - python main.py"]
+        L["user question"] --> M["OpenAI embed<br/>dense vector"]
+        L --> N["BM25 encode_queries<br/>sparse vector"]
+        M --> O["alpha blend 0.5<br/>scale dense and sparse"]
+        N --> O
+        O --> P["one hybrid query"]
+        P --> Q["top 4 pages"]
+        Q --> R["prompt + retrieved context"]
+        R --> S["gpt-4o, temperature 0"]
+        S --> T["answer + page citations"]
+    end
+
+    H -.->|"same fitted encoder"| N
+    K --> P
+    U["config.py reads .env<br/>models, dimension, index name"] -.-> ING
+    U -.-> QRY
+```
+
+Three edges in that diagram carry most of the design:
+
+- **`E` splits into `F` and `G`** — every chunk is encoded twice, sparse and
+  dense, and both land on the *same* Pinecone record.
+- **`H` feeds back into `N`** — the query must be encoded by the same fitted
+  BM25 encoder used at ingest, or the two sparse vectors describe different
+  vocabularies and keyword matching silently degrades.
+- **`M` and `N` merge at `O`, not after `P`** — the blend happens before the
+  search, so Pinecone returns one ranked list scored as
+  `dot(dense) + dot(sparse)`. There is no second result set to fuse.
+
+
 ## How it works
 
 **Page chunking.** `PyPDFLoader` already returns one `Document` per PDF page,

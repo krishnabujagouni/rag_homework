@@ -6,7 +6,7 @@ embedded twice — dense via OpenAI for semantic similarity, sparse via BM25
 for keyword match — and both vectors are upserted to a Pinecone dotproduct
 index, which is what lets main.py blend the two at query time.
 
-Run: python ingest.py
+Run: python ingestion.py
 """
 import os
 from pathlib import Path

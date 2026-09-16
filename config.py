@@ -1,6 +1,6 @@
 """Shared configuration, read from .env.
 
-Both ingest.py and main.py read from here rather than defining their own
+Both ingestion.py and main.py read from here rather than defining their own
 copies, because the embedding model and dimension MUST be identical on both
 sides: if ingestion and querying ever drift to different models, the query
 vector lands in a different vector space and retrieval degrades silently —

@@ -58,7 +58,7 @@ def ask(question: str, retriever, chain):
 def main():
     if not os.path.exists(BM25_PARAMS_PATH):
         raise SystemExit(
-            f"'{BM25_PARAMS_PATH}' not found — run `python ingest.py` first to fit "
+            f"'{BM25_PARAMS_PATH}' not found — run `python ingestion.py` first to fit "
             "and save the BM25 sparse encoder."
         )
 

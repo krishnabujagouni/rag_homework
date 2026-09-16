@@ -19,7 +19,7 @@ flowchart TD
     subgraph QRY["main.py"]
         F["question"] --> G["dense vector"]
         F --> H["sparse vector"]
-        G --> I["hybrid search<br/>alpha 0.5"]
+        G --> I["hybrid search<br/>"]
         H --> I
         I --> J["top 4 pages"]
         J --> K["gpt-4o"]
